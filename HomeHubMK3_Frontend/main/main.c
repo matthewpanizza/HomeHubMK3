@@ -29,9 +29,6 @@ static lv_style_t style_btn_red;
 static button_t *g_btn;
 static uint32_t screenWidth;
 static uint32_t screenHeight;
-static lv_disp_draw_buf_t draw_buf;
-static lv_color_t *disp_draw_buf;
-static lv_disp_drv_t disp_drv;
 static lv_group_t *lv_group;
 static lv_obj_t *lv_btn_1;
 static lv_obj_t *lv_btn_2;
@@ -84,18 +81,7 @@ static void style_init(void)
     lv_style_init(&style_btn_red);
     lv_style_set_bg_color(&style_btn_red, lv_palette_main(LV_PALETTE_RED));
     lv_style_set_bg_grad_color(&style_btn_red, lv_palette_lighten(LV_PALETTE_RED, 3));
-}
 
-void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
-  static int16_t cont_last = 0;
-  int16_t cont_now = mt8901_get_count();
-  data->enc_diff = ECO_STEP(cont_now - cont_last);
-  cont_last = cont_now;
-  if (button_isPressed(g_btn)) {
-    data->state = LV_INDEV_STATE_PR;
-  } else {
-    data->state = LV_INDEV_STATE_REL;
-  }
 }
 
 static void btn_event_cb(lv_event_t *e) {
@@ -116,23 +102,6 @@ static void btn_event_cb(lv_event_t *e) {
     //Get the first child of the button which is the label and change its text
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     lv_label_set_text_fmt(label, "Button: %d", cnt);
-  }
-}
-
-void init_lv_group() {
-  lv_group = lv_group_create();
-  lv_group_set_default(lv_group);
-
-  lv_indev_t *cur_drv = NULL;
-  for (;;) {
-    cur_drv = lv_indev_get_next(cur_drv);
-    if (!cur_drv) {
-      break;
-    }
-
-    if (cur_drv->driver->type == LV_INDEV_TYPE_ENCODER) {
-      lv_indev_set_group(cur_drv, lv_group);
-    }
   }
 }
 
@@ -178,13 +147,6 @@ void lvgl_task(void* arg) {
     esp_timer_handle_t periodic_timer;
     esp_timer_create(&periodic_timer_args, &periodic_timer);
     esp_timer_start_periodic(periodic_timer, portTICK_PERIOD_MS * 1000);
-
-    /* Initialize the input device driver */
-    static lv_indev_drv_t indev_drv;
-    lv_indev_drv_init(&indev_drv);
-    indev_drv.read_cb = encoder_read;
-    indev_drv.type = LV_INDEV_TYPE_ENCODER;
-    lv_indev_drv_register(&indev_drv);
 
     //init_lv_group();
     lv_example_get_started_1();

@@ -29,7 +29,7 @@ static button_t *g_btn;
 
 static esp_lcd_panel_handle_t g_panel_handle = NULL;
 
-static void __qsmd_rgb_disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p)
+static void __qsmd_rgb_disp_flush(lv_display_t *disp, const lv_area_t *area, lv_color_t *color_p)
 {
     int offsetx1 = area->x1;
     int offsetx2 = area->x2;
@@ -37,16 +37,16 @@ static void __qsmd_rgb_disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area
     int offsety2 = area->y2;
 
     esp_lcd_panel_draw_bitmap(g_panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_p);
-    lv_disp_flush_ready(disp_drv);
+    //lv_disp_flush_ready(disp_drv);
 }
 
 void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
 {
-    static lv_disp_drv_t disp_drv;
+    static lv_display_t *disp;
     int buffer_size;
     void *buf1 = NULL;
     void *buf2 = NULL;
-	static lv_disp_draw_buf_t draw_buf;
+	//static lv_disp_draw_buf_t draw_buf;
 
     lv_init();
 
@@ -56,14 +56,20 @@ void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
 
     buffer_size = panel_config->timings.h_res * panel_config->timings.v_res;
     esp_lcd_rgb_panel_get_frame_buffer(g_panel_handle, 2, &buf1, &buf2);
-    lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buffer_size);
+    //lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buffer_size);
 
-    lv_disp_drv_init(&disp_drv);         
+
+	disp = lv_display_create(panel_config->timings.h_res, panel_config->timings.v_res);
+	lv_display_set_flush_cb(disp, __qsmd_rgb_disp_flush);
+	lv_display_set_buffers(disp, buf1, buf2, buffer_size*3, LV_DISPLAY_RENDER_MODE_DIRECT);
+
+
+    /*lv_disp_drv_init(&disp_drv);         
     disp_drv.flush_cb = __qsmd_rgb_disp_flush;
     disp_drv.draw_buf = &draw_buf;
     disp_drv.hor_res = panel_config->timings.h_res;
     disp_drv.ver_res = panel_config->timings.v_res;
-    lv_disp_drv_register(&disp_drv);
+    lv_disp_drv_register(&disp_drv);*/
 }
 
 static spi_device_handle_t g_screen_spi;
@@ -392,7 +398,7 @@ void qmsd_rgb_spi_init() {
 	spi_bus_free(SPI2_HOST);
 }
 
-void __qmsd_encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data)
+void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
 {
     static int16_t cont_last = 0;
     int16_t cont_now = mt8901_get_count();
@@ -407,15 +413,19 @@ void __qmsd_encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data)
 
 void __qsmd_encoder_init(void)
 {
-    static lv_indev_drv_t indev_drv;
+    static lv_indev_t *indev;
 
     g_btn = button_attch(3, 1, 10);
     mt8901_init(5,6);
 
-    lv_indev_drv_init(&indev_drv);
+	indev = lv_indev_create();
+	lv_indev_set_type(indev, LV_INDEV_TYPE_ENCODER);
+	lv_indev_set_read_cb(indev, __qmsd_encoder_read);
+
+    /*lv_indev_drv_init(&indev_drv);
     indev_drv.read_cb = __qmsd_encoder_read;
     indev_drv.type = LV_INDEV_TYPE_ENCODER;
-    lv_indev_drv_register(&indev_drv);
+    lv_indev_drv_register(&indev_drv);*/
 }
 
 void screen_init(void) {
