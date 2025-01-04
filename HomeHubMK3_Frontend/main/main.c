@@ -99,7 +99,7 @@ void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
 }
 
 static void btn_event_cb(lv_event_t *e) {
-  /*lv_event_code_t code = lv_event_get_code(e);
+  lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *btn = lv_event_get_target(e);
   if (code == LV_EVENT_CLICKED) {
 
@@ -116,7 +116,7 @@ static void btn_event_cb(lv_event_t *e) {
     //Get the first child of the button which is the label and change its text
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     lv_label_set_text_fmt(label, "Button: %d", cnt);
-  }*/
+  }
 }
 
 void init_lv_group() {
@@ -186,7 +186,7 @@ void lvgl_task(void* arg) {
     indev_drv.type = LV_INDEV_TYPE_ENCODER;
     lv_indev_drv_register(&indev_drv);
 
-    init_lv_group();
+    //init_lv_group();
     lv_example_get_started_1();
 
     for (;;) {
