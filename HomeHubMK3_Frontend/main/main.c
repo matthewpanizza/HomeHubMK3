@@ -27,8 +27,6 @@ static lv_style_t style_btn_pressed;
 static lv_style_t style_btn_red;
 
 static button_t *g_btn;
-static uint32_t screenWidth;
-static uint32_t screenHeight;
 static lv_group_t *lv_group;
 static lv_obj_t *lv_btn_1;
 static lv_obj_t *lv_btn_2;
@@ -40,18 +38,6 @@ static lv_color_t darken(const lv_color_filter_dsc_t * dsc, lv_color_t color, lv
     LV_UNUSED(dsc);
     return lv_color_darken(color, opa);
 }
-
-/*void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
-  static int16_t cont_last = 0;
-  int16_t cont_now = mt8901_get_count();
-  data->enc_diff = ECO_STEP(cont_now - cont_last);
-  cont_last = cont_now;
-  if (button_isPressed(g_btn)) {
-    data->state = LV_INDEV_STATE_PR;
-  } else {
-    data->state = LV_INDEV_STATE_REL;
-  }
-}*/
 
 static void style_init(void)
 {
@@ -81,6 +67,38 @@ static void style_init(void)
     lv_style_init(&style_btn_red);
     lv_style_set_bg_color(&style_btn_red, lv_palette_main(LV_PALETTE_RED));
     lv_style_set_bg_grad_color(&style_btn_red, lv_palette_lighten(LV_PALETTE_RED, 3));
+
+}
+
+void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
+{
+    static int16_t cont_last = 0;
+    int16_t cont_now = mt8901_get_count();
+    data->enc_diff = ECO_STEP(cont_now - cont_last);
+    if(cont_now != cont_last) printf("Encoder Changed!\n");
+    cont_last = cont_now;
+    if (button_isPressed(g_btn)){
+        data->state = LV_INDEV_STATE_PR;
+    } else {
+        data->state = LV_INDEV_STATE_REL;
+    }
+}
+
+void __qsmd_encoder_init(void)
+{
+    static lv_indev_t *indev;
+
+    g_btn = button_attch(3, 0, 10);
+    mt8901_init(5,6);
+
+	indev = lv_indev_create();
+	lv_indev_set_type(indev, LV_INDEV_TYPE_ENCODER);
+	lv_indev_set_read_cb(indev, __qmsd_encoder_read);
+
+  lv_group = lv_group_create();
+  lv_group_set_default(lv_group);
+
+  lv_indev_set_group(indev, lv_group);
 
 }
 
@@ -133,11 +151,7 @@ void lv_example_get_started_1(void) {
 void lvgl_task(void* arg) {
     screen_init();
 
-    // Hardware Button
-    g_btn = button_attch(3, 0, 10);
-
-    // Magnetic Encoder
-    mt8901_init(5, 6);
+    __qsmd_encoder_init();
 
     // Tick interface for LVGL
     const esp_timer_create_args_t periodic_timer_args = {
@@ -148,7 +162,6 @@ void lvgl_task(void* arg) {
     esp_timer_create(&periodic_timer_args, &periodic_timer);
     esp_timer_start_periodic(periodic_timer, portTICK_PERIOD_MS * 1000);
 
-    //init_lv_group();
     lv_example_get_started_1();
 
     for (;;) {

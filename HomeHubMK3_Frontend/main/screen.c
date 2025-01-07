@@ -25,8 +25,6 @@
 #define ECO_O(y) (y>0)? -1:1
 #define ECO_STEP(x) x? ECO_O(x):0
 
-static button_t *g_btn;
-
 static esp_lcd_panel_handle_t g_panel_handle = NULL;
 
 static void __qsmd_rgb_disp_flush(lv_display_t *disp, const lv_area_t *area, lv_color_t *color_p)
@@ -37,7 +35,7 @@ static void __qsmd_rgb_disp_flush(lv_display_t *disp, const lv_area_t *area, lv_
     int offsety2 = area->y2;
 
     esp_lcd_panel_draw_bitmap(g_panel_handle, offsetx1, offsety1, offsetx2 + 1, offsety2 + 1, color_p);
-    //lv_disp_flush_ready(disp_drv);
+    lv_disp_flush_ready(disp);
 }
 
 void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
@@ -62,14 +60,6 @@ void qmsd_rgb_init(esp_lcd_rgb_panel_config_t *panel_config)
 	disp = lv_display_create(panel_config->timings.h_res, panel_config->timings.v_res);
 	lv_display_set_flush_cb(disp, __qsmd_rgb_disp_flush);
 	lv_display_set_buffers(disp, buf1, buf2, buffer_size*3, LV_DISPLAY_RENDER_MODE_DIRECT);
-
-
-    /*lv_disp_drv_init(&disp_drv);         
-    disp_drv.flush_cb = __qsmd_rgb_disp_flush;
-    disp_drv.draw_buf = &draw_buf;
-    disp_drv.hor_res = panel_config->timings.h_res;
-    disp_drv.ver_res = panel_config->timings.v_res;
-    lv_disp_drv_register(&disp_drv);*/
 }
 
 static spi_device_handle_t g_screen_spi;
@@ -398,36 +388,6 @@ void qmsd_rgb_spi_init() {
 	spi_bus_free(SPI2_HOST);
 }
 
-void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
-{
-    static int16_t cont_last = 0;
-    int16_t cont_now = mt8901_get_count();
-    data->enc_diff = ECO_STEP(cont_now - cont_last);
-    cont_last = cont_now;
-    if (button_isPressed(g_btn)){
-        data->state = LV_INDEV_STATE_PR;
-    } else {
-        data->state = LV_INDEV_STATE_REL;
-    }
-}
-
-void __qsmd_encoder_init(void)
-{
-    static lv_indev_t *indev;
-
-    g_btn = button_attch(3, 1, 10);
-    mt8901_init(5,6);
-
-	indev = lv_indev_create();
-	lv_indev_set_type(indev, LV_INDEV_TYPE_ENCODER);
-	lv_indev_set_read_cb(indev, __qmsd_encoder_read);
-
-    /*lv_indev_drv_init(&indev_drv);
-    indev_drv.read_cb = __qmsd_encoder_read;
-    indev_drv.type = LV_INDEV_TYPE_ENCODER;
-    lv_indev_drv_register(&indev_drv);*/
-}
-
 void screen_init(void) {
     gpio_config_t bk_gpio_config = {
         .mode = GPIO_MODE_OUTPUT,
@@ -485,7 +445,6 @@ void screen_init(void) {
     };
 
     qmsd_rgb_init(&panel_config);
-	__qsmd_encoder_init();
 
     ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, LCD_BK_LIGHT_ON_LEVEL));
 }
