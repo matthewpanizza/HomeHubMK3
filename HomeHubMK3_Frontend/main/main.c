@@ -126,7 +126,13 @@ static void btn_event_cb(lv_event_t *e) {
 /**
  * Create styles from scratch for buttons.
  */
+static void set_temp(void * bar, int32_t temp)
+{
+    lv_bar_set_value(bar, temp, LV_ANIM_ON);
+}
+
 void lv_example_get_started_1(void) {
+
   lv_btn_1 = lv_btn_create(lv_scr_act());                          /*Add a button the current screen*/
   lv_obj_set_size(lv_btn_1, 120, 50);                              /*Set its size*/
   lv_obj_align(lv_btn_1, LV_ALIGN_CENTER, 0, -40);                 /*Set its position*/
@@ -146,6 +152,83 @@ void lv_example_get_started_1(void) {
   lv_obj_t *label2 = lv_label_create(lv_btn_2); /*Add a label to the button*/
   lv_label_set_text(label2, "Button");          /*Set the labels text*/
   lv_obj_center(label2);
+
+    static const lv_style_prop_t props[] = {LV_STYLE_BG_COLOR, 0};
+    static lv_style_t style_knob;
+    static lv_style_transition_dsc_t transition_dsc;
+    lv_style_transition_dsc_init(&transition_dsc, props, lv_anim_path_linear, 500, 0, NULL);
+
+    lv_style_init(&style_knob);
+    lv_style_set_bg_opa(&style_knob, LV_OPA_10);
+    lv_style_set_bg_color(&style_knob, lv_color_hex(0xFFFFFF));
+    lv_style_set_border_color(&style_knob, lv_color_hex(0xFFFFFF));
+    lv_style_set_border_width(&style_knob, 5);
+    lv_style_set_radius(&style_knob, LV_RADIUS_CIRCLE);
+    lv_style_set_pad_all(&style_knob, 6); /*Makes the knob larger*/
+    lv_style_set_transition(&style_knob, &transition_dsc);
+
+    static lv_style_t style_indicator;
+
+    static lv_style_t style_bg_temperature;
+    static lv_color_t temperature_warm = { .red = 0xFF, .green = 0x96, .blue = 0x3C };  //2400K
+    static lv_color_t temperature_cool = { .red = 0xF2, .green = 0xF2, .blue = 0xFF };  //7000K
+
+    static lv_style_t style_bg_brightness;
+    static lv_color_t brightness_dark = { .red = 0x1C, .green = 0x1C, .blue = 0x1C };  //dark
+    static lv_color_t brightness_light = { .red = 0xFF, .green = 0xFF, .blue = 0xFF };  //7000K
+
+    lv_style_init(&style_indicator);
+    lv_style_set_border_opa(&style_indicator, LV_OPA_0);
+    lv_style_set_bg_opa(&style_indicator, LV_OPA_0);
+    lv_style_set_bg_color(&style_indicator, lv_color_hex(0x000000));
+
+    lv_style_init(&style_bg_temperature);
+    lv_style_set_bg_opa(&style_bg_temperature, LV_OPA_COVER);
+    lv_style_set_bg_color(&style_bg_temperature, temperature_warm);
+    lv_style_set_bg_grad_color(&style_bg_temperature, temperature_cool);
+    lv_style_set_bg_grad_dir(&style_bg_temperature, LV_GRAD_DIR_HOR);
+    lv_style_set_border_color(&style_bg_temperature, lv_color_hex(0xFFFFFF));
+    
+
+    lv_obj_t * bar = lv_slider_create(lv_screen_active());
+    lv_obj_set_size(bar, 200, 20);
+    lv_obj_align(bar, LV_ALIGN_CENTER, 0, -150);                  /*Set its position*/
+    lv_bar_set_range(bar, 24, 70);
+    lv_obj_add_style(bar, &style_knob, LV_PART_KNOB);
+    lv_obj_add_style(bar, &style_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(bar, &style_bg_temperature, LV_PART_MAIN);
+    
+    
+    lv_style_init(&style_bg_brightness);
+    lv_style_set_bg_opa(&style_bg_brightness, LV_OPA_COVER);
+    lv_style_set_bg_color(&style_bg_brightness, brightness_dark);
+    lv_style_set_bg_grad_color(&style_bg_brightness, brightness_light);
+    lv_style_set_bg_grad_dir(&style_bg_brightness, LV_GRAD_DIR_HOR);
+    lv_style_set_border_color(&style_bg_brightness, lv_color_hex(0xFFFFFF));
+    
+
+    lv_obj_t * bar2 = lv_slider_create(lv_screen_active());
+    
+    lv_obj_set_size(bar2, 200, 20);
+    lv_obj_align(bar2, LV_ALIGN_CENTER, 0, -100);                  /*Set its position*/
+    lv_bar_set_range(bar2, 24, 70);
+    lv_obj_add_style(bar2, &style_knob, LV_PART_KNOB);
+    lv_obj_add_style(bar2, &style_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(bar2, &style_bg_brightness, LV_PART_MAIN);
+
+
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
+
+
+    //lv_anim_t a;
+    //lv_anim_init(&a);
+    //lv_anim_set_exec_cb(&a, set_temp);
+    //lv_anim_set_duration(&a, 3000);
+    //lv_anim_set_playback_duration(&a, 3000);
+    //lv_anim_set_var(&a, bar);
+    //lv_anim_set_values(&a, -20, 40);
+    //lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    //lv_anim_start(&a);
 }
 
 void lvgl_task(void* arg) {
