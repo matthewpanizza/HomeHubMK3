@@ -11,6 +11,8 @@
 #include "esp_timer.h"
 #include "button.h"
 #include "mt8901.h"
+#include "bitmaps.h"
+//#include "weather_images.h"
 
 #define TAG "MAIN"
 #define ECO_O(y) (y > 0) ? -1 : 1
@@ -103,7 +105,7 @@ void __qsmd_encoder_init(void)
 }
 
 static void btn_event_cb(lv_event_t *e) {
-  lv_event_code_t code = lv_event_get_code(e);
+  /*lv_event_code_t code = lv_event_get_code(e);
   lv_obj_t *btn = lv_event_get_target(e);
   if (code == LV_EVENT_CLICKED) {
 
@@ -120,7 +122,7 @@ static void btn_event_cb(lv_event_t *e) {
     //Get the first child of the button which is the label and change its text
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     lv_label_set_text_fmt(label, "Button: %d", cnt);
-  }
+  }*/
 }
 
 /**
@@ -153,6 +155,10 @@ void lv_example_get_started_1(void) {
   lv_label_set_text(label2, "Button");          /*Set the labels text*/
   lv_obj_center(label2);
 
+    
+}
+
+void draw_UI_Main(){
     static const lv_style_prop_t props[] = {LV_STYLE_BG_COLOR, 0};
     static lv_style_t style_knob;
     static lv_style_transition_dsc_t transition_dsc;
@@ -192,7 +198,7 @@ void lv_example_get_started_1(void) {
 
     lv_obj_t * bar = lv_slider_create(lv_screen_active());
     lv_obj_set_size(bar, 200, 20);
-    lv_obj_align(bar, LV_ALIGN_CENTER, 0, -150);                  /*Set its position*/
+    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 100);                  /*Set its position*/
     lv_bar_set_range(bar, 24, 70);
     lv_obj_add_style(bar, &style_knob, LV_PART_KNOB);
     lv_obj_add_style(bar, &style_indicator, LV_PART_INDICATOR);
@@ -210,7 +216,7 @@ void lv_example_get_started_1(void) {
     lv_obj_t * bar2 = lv_slider_create(lv_screen_active());
     
     lv_obj_set_size(bar2, 200, 20);
-    lv_obj_align(bar2, LV_ALIGN_CENTER, 0, -100);                  /*Set its position*/
+    lv_obj_align(bar2, LV_ALIGN_CENTER, 0, 150);                  /*Set its position*/
     lv_bar_set_range(bar2, 24, 70);
     lv_obj_add_style(bar2, &style_knob, LV_PART_KNOB);
     lv_obj_add_style(bar2, &style_indicator, LV_PART_INDICATOR);
@@ -219,6 +225,47 @@ void lv_example_get_started_1(void) {
 
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
 
+
+    lv_obj_t * roller1 = lv_roller_create(lv_screen_active());
+    lv_roller_set_options(roller1,
+                          "January\n"
+                          "February\n"
+                          "March\n"
+                          "April\n"
+                          "May\n"
+                          "June\n"
+                          "July\n"
+                          "August\n"
+                          "September\n"
+                          "October\n"
+                          "November\n"
+                          "December",
+                          LV_ROLLER_MODE_INFINITE);
+
+    lv_roller_set_visible_row_count(roller1, 4);
+    lv_obj_center(roller1);
+    lv_obj_add_event_cb(roller1, NULL, LV_EVENT_ALL, NULL);
+    lv_obj_align(roller1, LV_ALIGN_CENTER, 150, 0);
+
+    LV_IMAGE_DECLARE(iPhoneAway);
+    LV_IMAGE_DECLARE(iPhoneIconPresent);
+
+    static lv_obj_t * phoneImage;
+    phoneImage = lv_image_create(lv_screen_active());
+    lv_obj_align(phoneImage, LV_ALIGN_CENTER, -125, 0);
+    lv_image_set_src(phoneImage, &iPhoneAway);
+
+    static lv_obj_t * phoneImage2;
+    phoneImage2 = lv_image_create(lv_screen_active());
+    lv_obj_align(phoneImage2, LV_ALIGN_CENTER, -25, 0);
+    lv_image_set_src(phoneImage2, &iPhoneIconPresent);
+
+    static lv_obj_t * text_label_date;
+    text_label_date = lv_label_create(lv_screen_active());
+    lv_label_set_text(text_label_date, "1/17/2025");
+    lv_obj_align(text_label_date, LV_ALIGN_CENTER, 0, -150);
+    lv_obj_set_style_text_font((lv_obj_t*) text_label_date, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color((lv_obj_t*) text_label_date, lv_palette_main(LV_PALETTE_TEAL), 0);
 
     //lv_anim_t a;
     //lv_anim_init(&a);
@@ -245,7 +292,7 @@ void lvgl_task(void* arg) {
     esp_timer_create(&periodic_timer_args, &periodic_timer);
     esp_timer_start_periodic(periodic_timer, portTICK_PERIOD_MS * 1000);
 
-    lv_example_get_started_1();
+    draw_UI_Main();
 
     for (;;) {
         lv_task_handler();
