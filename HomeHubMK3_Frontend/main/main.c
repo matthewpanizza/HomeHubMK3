@@ -339,13 +339,13 @@ void app_main(void) {
         .rxfifo_full_thresh = 100,
         .rx_timeout_thresh = 10,
     };
-    ESP_ERROR_CHECK(uart_intr_config(uart_num, &uart_intr));
+    //ESP_ERROR_CHECK(uart_intr_config(uart_num, &uart_intr));
 
     // Enable UART RX FIFO full threshold and timeout interrupts
-    ESP_ERROR_CHECK(uart_enable_rx_intr(uart_num));
+    //ESP_ERROR_CHECK(uart_enable_rx_intr(uart_num));
     
     //Create a task to handler UART event from ISR
-    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+    //xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
 
     //static uint32_t user_data = 10;
     //timer = lv_timer_create(uart_print, 500, &user_data);
