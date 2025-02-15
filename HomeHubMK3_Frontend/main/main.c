@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include "rom/gpio.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_log.h"
 #include "lvgl.h"
 #include "board.h"
@@ -17,6 +18,9 @@
 #define TAG "MAIN"
 #define ECO_O(y) (y > 0) ? -1 : 1
 #define ECO_STEP(x) x ? ECO_O(x) : 0
+
+#define BUF_SIZE (1024)
+#define RD_BUF_SIZE (BUF_SIZE)
 
 static void increase_lvgl_tick(void* arg) {
     lv_tick_inc(portTICK_PERIOD_MS);
@@ -32,6 +36,11 @@ static button_t *g_btn;
 static lv_group_t *lv_group;
 static lv_obj_t *lv_btn_1;
 static lv_obj_t *lv_btn_2;
+
+lv_timer_t * timer;
+
+const uart_port_t uart_num = UART_NUM_2;
+QueueHandle_t uart_queue;
 
 //static button_t *g_btn;
 
@@ -77,7 +86,11 @@ void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
     static int16_t cont_last = 0;
     int16_t cont_now = mt8901_get_count();
     data->enc_diff = ECO_STEP(cont_now - cont_last);
-    if(cont_now != cont_last) printf("Encoder Changed!\n");
+    if(cont_now != cont_last){
+        printf("Encoder Changed!\n");
+        char* test_str = "Encoder Changed.\n";
+        uart_write_bytes(UART_NUM_2, (const char*)test_str, strlen(test_str));
+    }
     cont_last = cont_now;
     if (button_isPressed(g_btn)){
         data->state = LV_INDEV_STATE_PR;
@@ -247,18 +260,18 @@ void draw_UI_Main(){
     lv_obj_add_event_cb(roller1, NULL, LV_EVENT_ALL, NULL);
     lv_obj_align(roller1, LV_ALIGN_CENTER, 150, 0);
 
-    LV_IMAGE_DECLARE(iPhoneAway);
-    LV_IMAGE_DECLARE(iPhoneIconPresent);
+    LV_IMAGE_DECLARE(WatchAway);
+    LV_IMAGE_DECLARE(WatchPresent);
 
     static lv_obj_t * phoneImage;
     phoneImage = lv_image_create(lv_screen_active());
     lv_obj_align(phoneImage, LV_ALIGN_CENTER, -125, 0);
-    lv_image_set_src(phoneImage, &iPhoneAway);
+    lv_image_set_src(phoneImage, &WatchAway);
 
     static lv_obj_t * phoneImage2;
     phoneImage2 = lv_image_create(lv_screen_active());
     lv_obj_align(phoneImage2, LV_ALIGN_CENTER, -25, 0);
-    lv_image_set_src(phoneImage2, &iPhoneIconPresent);
+    lv_image_set_src(phoneImage2, &WatchPresent);
 
     static lv_obj_t * text_label_date;
     text_label_date = lv_label_create(lv_screen_active());
@@ -282,7 +295,7 @@ void lvgl_task(void* arg) {
     screen_init();
 
     __qsmd_encoder_init();
-
+                                        
     // Tick interface for LVGL
     const esp_timer_create_args_t periodic_timer_args = {
         .callback = increase_lvgl_tick,
@@ -301,5 +314,43 @@ void lvgl_task(void* arg) {
 }
 
 void app_main(void) {
+
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    // Configure UART parameters
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+
+    // Set UART pins(TX: IO1, RX: IO2)
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, 1, 2, -1, -1));
+
+    // Setup UART buffered IO with event queue
+    const int uart_buffer_size = (1024 * 2);
+    // Install UART driver using an event queue here
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, uart_buffer_size, \
+                                        uart_buffer_size, 10, &uart_queue, 0));
+
+    uart_intr_config_t uart_intr = {
+        .rxfifo_full_thresh = 100,
+        .rx_timeout_thresh = 10,
+    };
+    ESP_ERROR_CHECK(uart_intr_config(uart_num, &uart_intr));
+
+    // Enable UART RX FIFO full threshold and timeout interrupts
+    ESP_ERROR_CHECK(uart_enable_rx_intr(uart_num));
+    
+    //Create a task to handler UART event from ISR
+    xTaskCreate(uart_event_task, "uart_event_task", 2048, NULL, 12, NULL);
+
+    //static uint32_t user_data = 10;
+    //timer = lv_timer_create(uart_print, 500, &user_data);
+
     xTaskCreatePinnedToCore(lvgl_task, NULL, 8 * 1024, NULL, 5, NULL, 1);
+
+    
 }
