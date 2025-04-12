@@ -20,7 +20,7 @@
 #define ECO_STEP(x) x ? ECO_O(x) : 0
 
 #define BUF_SIZE (1024)
-#define RD_BUF_SIZE (BUF_SIZE)
+#define RX_BUF_SIZE (BUF_SIZE)
 
 static void increase_lvgl_tick(void* arg) {
     lv_tick_inc(portTICK_PERIOD_MS);
@@ -41,7 +41,6 @@ lv_timer_t * timer;
 
 const uart_port_t uart_num = UART_NUM_2;
 QueueHandle_t uart_queue;
-
 
 //static button_t *g_btn;
 
@@ -116,6 +115,30 @@ void __qsmd_encoder_init(void)
 
   lv_indev_set_group(indev, lv_group);
 
+}
+
+static void rx_task(void *arg)
+{
+    static const char *RX_TASK_TAG = "RX_TASK";
+    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
+    char rxData[RX_BUF_SIZE+1];
+    while (1) {
+        const int rxBytes = uart_read_bytes(UART_NUM_2, data, RX_BUF_SIZE, 100 / portTICK_PERIOD_MS);
+        if (rxBytes > 0) {
+            for(int i = 0; i < rxBytes; i++) {
+                if (data[i] == '\n') {
+                    data[i] = '\0';
+                    //for(int j = 0; j <= i; j++) {
+                    //    rxData[j] = data[j];
+                    //}
+                    break;
+                }
+            }
+            ESP_LOGI(RX_TASK_TAG, "Read bytes: %s", data);
+        }
+    }
+    free(data);
 }
 
 static void btn_event_cb(lv_event_t *e) {
@@ -348,6 +371,7 @@ void app_main(void) {
     //timer = lv_timer_create(uart_print, 500, &user_data);
 
     xTaskCreatePinnedToCore(lvgl_task, NULL, 8 * 1024, NULL, 5, NULL, 1);
+    xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
 
     
 }
