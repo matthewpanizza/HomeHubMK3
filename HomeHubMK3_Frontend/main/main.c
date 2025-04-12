@@ -42,6 +42,7 @@ lv_timer_t * timer;
 const uart_port_t uart_num = UART_NUM_2;
 QueueHandle_t uart_queue;
 
+
 //static button_t *g_btn;
 
 static lv_color_t darken(const lv_color_filter_dsc_t * dsc, lv_color_t color, lv_opa_t opa)
@@ -335,10 +336,6 @@ void app_main(void) {
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, uart_buffer_size, \
                                         uart_buffer_size, 10, &uart_queue, 0));
 
-    uart_intr_config_t uart_intr = {
-        .rxfifo_full_thresh = 100,
-        .rx_timeout_thresh = 10,
-    };
     //ESP_ERROR_CHECK(uart_intr_config(uart_num, &uart_intr));
 
     // Enable UART RX FIFO full threshold and timeout interrupts
