@@ -27,22 +27,39 @@ static void increase_lvgl_tick(void* arg) {
 }
 
 extern void screen_init(void);
+static void processCommand(const char* input, uint16_t length);
 
+
+LV_IMAGE_DECLARE(WatchAway);
+LV_IMAGE_DECLARE(WatchPresent);
+LV_IMAGE_DECLARE(iPhoneAway);
+LV_IMAGE_DECLARE(iPhoneIconPresent);
+
+// Hardware
+static button_t *g_btn;
+const uart_port_t uart_num = UART_NUM_2;
+QueueHandle_t uart_queue;
+
+//UI Groups
+static lv_group_t *lv_group;
+
+// UI Elements
+static lv_obj_t * brightnessSlider;
+static lv_obj_t * colorSlider;
+static lv_obj_t * text_label_date;
+static lv_obj_t * phoneImage;
+static lv_obj_t * watchImage;
+
+// Styling
 static lv_style_t style_btn;
 static lv_style_t style_btn_pressed;
 static lv_style_t style_btn_red;
 
-static button_t *g_btn;
-static lv_group_t *lv_group;
-static lv_obj_t *lv_btn_1;
-static lv_obj_t *lv_btn_2;
-
-lv_timer_t * timer;
-
-const uart_port_t uart_num = UART_NUM_2;
-QueueHandle_t uart_queue;
-
-//static button_t *g_btn;
+//Global variables for UI Operation
+uint8_t timeHours = 0;
+uint8_t timeMinutes = 0;
+bool watchPresent = false;
+bool phonePresent = false;
 
 static lv_color_t darken(const lv_color_filter_dsc_t * dsc, lv_color_t color, lv_opa_t opa)
 {
@@ -88,8 +105,8 @@ void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
     data->enc_diff = ECO_STEP(cont_now - cont_last);
     if(cont_now != cont_last){
         printf("Encoder Changed!\n");
-        char* test_str = "Encoder Changed.\n";
-        uart_write_bytes(UART_NUM_2, (const char*)test_str, strlen(test_str));
+        //char* test_str = "Encoder Changed.\n";
+        //uart_write_bytes(UART_NUM_2, (const char*)test_str, strlen(test_str));
     }
     cont_last = cont_now;
     if (button_isPressed(g_btn)){
@@ -119,8 +136,6 @@ void __qsmd_encoder_init(void)
 
 static void rx_task(void *arg)
 {
-    static const char *RX_TASK_TAG = "RX_TASK";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
     char rxData[RX_BUF_SIZE+1];
     while (1) {
@@ -135,10 +150,28 @@ static void rx_task(void *arg)
                     break;
                 }
             }
-            ESP_LOGI(RX_TASK_TAG, "Read bytes: %s", data);
+            processCommand((const char*) data, rxBytes);
         }
     }
     free(data);
+}
+
+static void brightness_changed_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    uint32_t sliderValue = lv_slider_get_value(slider);
+
+    char output[10];
+    lv_snprintf(output, sizeof(output), "B%d\n", sliderValue);
+    uart_write_bytes(UART_NUM_2, (const char*)output, strlen(output));
+}
+
+static void color_changed_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    uint32_t sliderValue = lv_slider_get_value(slider);
+
+    char output[10];
+    lv_snprintf(output, sizeof(output), "C%d\n", sliderValue);
+    uart_write_bytes(UART_NUM_2, (const char*)output, strlen(output));
 }
 
 static void btn_event_cb(lv_event_t *e) {
@@ -170,29 +203,69 @@ static void set_temp(void * bar, int32_t temp)
     lv_bar_set_value(bar, temp, LV_ANIM_ON);
 }
 
-void lv_example_get_started_1(void) {
+static void processCommand(const char* input, uint16_t length) {
+    //First character is the node identifier (U = UI, M = Main Controller, S = Secondary Controller)
+    //Second character is the command
+    //Remaining characters are the payload. Process the data based on the type of command and where it's coming from
 
-  lv_btn_1 = lv_btn_create(lv_scr_act());                          /*Add a button the current screen*/
-  lv_obj_set_size(lv_btn_1, 120, 50);                              /*Set its size*/
-  lv_obj_align(lv_btn_1, LV_ALIGN_CENTER, 0, -40);                 /*Set its position*/
-  lv_obj_add_event_cb(lv_btn_1, btn_event_cb, LV_EVENT_ALL, NULL); /*Assign a callback to the button*/
+    if(length < 0) return; //Invalid length
 
-  lv_obj_t *label = lv_label_create(lv_btn_1); /*Add a label to the button*/
-  lv_label_set_text(label, "Button");          /*Set the labels text*/
-  lv_obj_center(label);
+    static const char *CMD_TASK_TAG = "CMD_TASK";
+    esp_log_level_set(CMD_TASK_TAG, ESP_LOG_INFO);
+    ESP_LOGI(CMD_TASK_TAG, "Read bytes: %s", input);
 
-  lv_btn_2 = lv_btn_create(lv_scr_act());                                             /*Add a button the current screen*/
-  lv_obj_set_style_bg_color(lv_btn_2, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN); /*Set its main color*/
+    char payload[length];
+    for(int i = 2; i < length; i++){
+        payload[i-2] = input[i];
+    }
+    ESP_LOGI(CMD_TASK_TAG, "Read payload: %s", payload);
 
-  lv_obj_set_size(lv_btn_2, 120, 50);                              /*Set its size*/
-  lv_obj_align(lv_btn_2, LV_ALIGN_CENTER, 0, 40);                  /*Set its position*/
-  lv_obj_add_event_cb(lv_btn_2, btn_event_cb, LV_EVENT_ALL, NULL); /*Assign a callback to the button*/
-
-  lv_obj_t *label2 = lv_label_create(lv_btn_2); /*Add a label to the button*/
-  lv_label_set_text(label2, "Button");          /*Set the labels text*/
-  lv_obj_center(label2);
-
-    
+    if(input[0] == 'M'){
+        switch(input[1]){
+            case 'S': //Device status update - Shows if one of the BLE devices is discovered
+                break;
+            case 'T': //Time change - gets the time from the main controller and sets it to the UI
+                //Format is "HH:MM"
+                if (sscanf(payload, "%2u%1[^:]%2u", &timeHours, &timeMinutes) == 2) {
+                    ESP_LOGI(CMD_TASK_TAG, "Got Time Command - %u:%u", timeHours, timeMinutes);
+                } else {
+                    ESP_LOGI(CMD_TASK_TAG, "Invalid time format");
+                }
+        
+                
+                break;
+            case 'B': //Brightness change - gets the brightness from the main controller and sets it to the UI
+                break;
+            case 'C': //Color temperature change - gets the color from the main controller and sets it to the UI
+                break;
+            case 'N': //Network status - information about the network status of the main controller
+                break;
+            case 'W': //Watch status - information about the watch status (present or away)
+                if(payload[0] == '1'){
+                    watchPresent = true;
+                    ESP_LOGI(CMD_TASK_TAG, "Watch Present");
+                } else if(payload[0] == '0'){
+                    watchPresent = false;
+                    ESP_LOGI(CMD_TASK_TAG, "Watch Away");
+                } else {
+                    ESP_LOGI(CMD_TASK_TAG, "Invalid Watch Status Payload: %s", payload);
+                }
+                break;
+            case 'P': //Phone status - information about the phone status (present or away)
+                if(payload[0] == '1'){
+                    phonePresent = true;
+                    ESP_LOGI(CMD_TASK_TAG, "Phone Present");
+                } else if(payload[0] == '0'){
+                    phonePresent = false;
+                    ESP_LOGI(CMD_TASK_TAG, "Phone Away");
+                } else {
+                    ESP_LOGI(CMD_TASK_TAG, "Invalid Phone Status Payload: %s", payload);
+                }
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 void draw_UI_Main(){
@@ -233,13 +306,16 @@ void draw_UI_Main(){
     lv_style_set_border_color(&style_bg_temperature, lv_color_hex(0xFFFFFF));
     
 
-    lv_obj_t * bar = lv_slider_create(lv_screen_active());
-    lv_obj_set_size(bar, 200, 20);
-    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 100);                  /*Set its position*/
-    lv_bar_set_range(bar, 24, 70);
-    lv_obj_add_style(bar, &style_knob, LV_PART_KNOB);
-    lv_obj_add_style(bar, &style_indicator, LV_PART_INDICATOR);
-    lv_obj_add_style(bar, &style_bg_temperature, LV_PART_MAIN);
+    colorSlider = lv_slider_create(lv_screen_active());
+
+    lv_obj_add_event_cb(colorSlider, color_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_set_size(colorSlider, 200, 20);
+    lv_obj_align(colorSlider, LV_ALIGN_CENTER, 0, 100);                  /*Set its position*/
+    lv_bar_set_range(colorSlider, 24, 70);
+    lv_obj_add_style(colorSlider, &style_knob, LV_PART_KNOB);
+    lv_obj_add_style(colorSlider, &style_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(colorSlider, &style_bg_temperature, LV_PART_MAIN);
     
     
     lv_style_init(&style_bg_brightness);
@@ -250,20 +326,22 @@ void draw_UI_Main(){
     lv_style_set_border_color(&style_bg_brightness, lv_color_hex(0xFFFFFF));
     
 
-    lv_obj_t * bar2 = lv_slider_create(lv_screen_active());
+    brightnessSlider = lv_slider_create(lv_screen_active());
+
+    lv_obj_add_event_cb(brightnessSlider, brightness_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
     
-    lv_obj_set_size(bar2, 200, 20);
-    lv_obj_align(bar2, LV_ALIGN_CENTER, 0, 150);                  /*Set its position*/
-    lv_bar_set_range(bar2, 24, 70);
-    lv_obj_add_style(bar2, &style_knob, LV_PART_KNOB);
-    lv_obj_add_style(bar2, &style_indicator, LV_PART_INDICATOR);
-    lv_obj_add_style(bar2, &style_bg_brightness, LV_PART_MAIN);
+    lv_obj_set_size(brightnessSlider, 200, 20);
+    lv_obj_align(brightnessSlider, LV_ALIGN_CENTER, 0, 150);                  /*Set its position*/
+    lv_bar_set_range(brightnessSlider, 0, 100);
+    lv_obj_add_style(brightnessSlider, &style_knob, LV_PART_KNOB);
+    lv_obj_add_style(brightnessSlider, &style_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(brightnessSlider, &style_bg_brightness, LV_PART_MAIN);
 
 
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
 
 
-    lv_obj_t * roller1 = lv_roller_create(lv_screen_active());
+    /* lv_obj_t * roller1 = lv_roller_create(lv_screen_active());
     lv_roller_set_options(roller1,
                           "January\n"
                           "February\n"
@@ -282,22 +360,20 @@ void draw_UI_Main(){
     lv_roller_set_visible_row_count(roller1, 4);
     lv_obj_center(roller1);
     lv_obj_add_event_cb(roller1, NULL, LV_EVENT_ALL, NULL);
-    lv_obj_align(roller1, LV_ALIGN_CENTER, 150, 0);
+    lv_obj_align(roller1, LV_ALIGN_CENTER, 150, 0);*/
 
-    LV_IMAGE_DECLARE(WatchAway);
-    LV_IMAGE_DECLARE(WatchPresent);
+    
 
-    static lv_obj_t * phoneImage;
+    
+    watchImage = lv_image_create(lv_screen_active());
+    lv_obj_align(watchImage, LV_ALIGN_CENTER, -125, 0);
+    lv_image_set_src(watchImage, &WatchAway);
+
     phoneImage = lv_image_create(lv_screen_active());
-    lv_obj_align(phoneImage, LV_ALIGN_CENTER, -125, 0);
-    lv_image_set_src(phoneImage, &WatchAway);
+    lv_obj_align(phoneImage, LV_ALIGN_CENTER, -25, 0);
+    lv_image_set_src(phoneImage, &iPhoneAway);
 
-    static lv_obj_t * phoneImage2;
-    phoneImage2 = lv_image_create(lv_screen_active());
-    lv_obj_align(phoneImage2, LV_ALIGN_CENTER, -25, 0);
-    lv_image_set_src(phoneImage2, &WatchPresent);
-
-    static lv_obj_t * text_label_date;
+    
     text_label_date = lv_label_create(lv_screen_active());
     lv_label_set_text(text_label_date, "1/17/2025");
     lv_obj_align(text_label_date, LV_ALIGN_CENTER, 0, -150);
@@ -315,6 +391,31 @@ void draw_UI_Main(){
     //lv_anim_start(&a);
 }
 
+void update_UI_Main(){
+    char timeLabel[10];
+    lv_snprintf(timeLabel, sizeof(timeLabel), "%2u:%02u", timeHours, timeMinutes);
+    lv_label_set_text(text_label_date, timeLabel);
+
+    static bool lastWatchStatus = false;
+    static bool lastPhoneStatus = false;
+    if(watchPresent != lastWatchStatus){
+        lastWatchStatus = watchPresent;
+        if(watchPresent){
+            lv_image_set_src(watchImage, &WatchPresent);
+        } else {
+            lv_image_set_src(watchImage, &WatchAway);
+        }
+    }
+    if(phonePresent != lastPhoneStatus){
+        lastPhoneStatus = phonePresent;
+        if(phonePresent){
+            lv_image_set_src(phoneImage, &iPhoneIconPresent);
+        } else {
+            lv_image_set_src(phoneImage, &iPhoneAway);
+        }
+    }
+}
+
 void lvgl_task(void* arg) {
     screen_init();
 
@@ -330,8 +431,9 @@ void lvgl_task(void* arg) {
     esp_timer_start_periodic(periodic_timer, portTICK_PERIOD_MS * 1000);
 
     draw_UI_Main();
-
+    
     for (;;) {
+        update_UI_Main();
         lv_task_handler();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
