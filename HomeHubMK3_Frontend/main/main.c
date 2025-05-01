@@ -13,6 +13,7 @@
 #include "button.h"
 #include "mt8901.h"
 #include "bitmaps.h"
+#include "math.h"
 //#include "weather_images.h"
 
 #define TAG "MAIN"
@@ -29,11 +30,12 @@ static void increase_lvgl_tick(void* arg) {
 extern void screen_init(void);
 static void processCommand(const char* input, uint16_t length);
 
-
+LV_IMAGE_DECLARE(WatchAway);
 LV_IMAGE_DECLARE(WatchAway);
 LV_IMAGE_DECLARE(WatchPresent);
 LV_IMAGE_DECLARE(iPhoneAway);
-LV_IMAGE_DECLARE(iPhoneIconPresent);
+LV_IMAGE_DECLARE(bulbicon);
+LV_IMAGE_DECLARE(bulbfill);
 
 // Hardware
 static button_t *g_btn;
@@ -49,11 +51,19 @@ static lv_obj_t * colorSlider;
 static lv_obj_t * text_label_date;
 static lv_obj_t * phoneImage;
 static lv_obj_t * watchImage;
+static lv_obj_t * bulbOutline;
+static lv_obj_t * bulbFill;
+
+//Colors
+
+static lv_color_t color_warm = { .red = 0xFF, .green = 0x96, .blue = 0x3C };  //2400K
+static lv_color_t color_cool = { .red = 0xF2, .green = 0xF2, .blue = 0xFF };  //7000K
+lv_color_t bulbFillColor = { .red = 0xFF, .green = 0x96, .blue = 0x3C };  //2400K
+lv_color_t bulbOutlineColor = { .red = 0xFF, .green = 0xFF, .blue = 0xFF };  //White
 
 // Styling
-static lv_style_t style_btn;
-static lv_style_t style_btn_pressed;
-static lv_style_t style_btn_red;
+static lv_style_t styleBulbOutline;
+static lv_style_t styleBulbFill;
 
 //Global variables for UI Operation
 uint8_t timeHours = 0;
@@ -65,37 +75,6 @@ static lv_color_t darken(const lv_color_filter_dsc_t * dsc, lv_color_t color, lv
 {
     LV_UNUSED(dsc);
     return lv_color_darken(color, opa);
-}
-
-static void style_init(void)
-{
-    /*Create a simple button style*/
-    lv_style_init(&style_btn);
-    lv_style_set_radius(&style_btn, 10);
-    lv_style_set_bg_opa(&style_btn, LV_OPA_COVER);
-    lv_style_set_bg_color(&style_btn, lv_palette_lighten(LV_PALETTE_GREY, 3));
-    lv_style_set_bg_grad_color(&style_btn, lv_palette_main(LV_PALETTE_GREY));
-    lv_style_set_bg_grad_dir(&style_btn, LV_GRAD_DIR_VER);
-
-    lv_style_set_border_color(&style_btn, lv_color_black());
-    lv_style_set_border_opa(&style_btn, LV_OPA_20);
-    lv_style_set_border_width(&style_btn, 2);
-
-    lv_style_set_text_color(&style_btn, lv_color_black());
-
-    /*Create a style for the pressed state.
-     *Use a color filter to simply modify all colors in this state*/
-    static lv_color_filter_dsc_t color_filter;
-    lv_color_filter_dsc_init(&color_filter, darken);
-    lv_style_init(&style_btn_pressed);
-    lv_style_set_color_filter_dsc(&style_btn_pressed, &color_filter);
-    lv_style_set_color_filter_opa(&style_btn_pressed, LV_OPA_20);
-
-    /*Create a red style. Change only some colors.*/
-    lv_style_init(&style_btn_red);
-    lv_style_set_bg_color(&style_btn_red, lv_palette_main(LV_PALETTE_RED));
-    lv_style_set_bg_grad_color(&style_btn_red, lv_palette_lighten(LV_PALETTE_RED, 3));
-
 }
 
 void __qmsd_encoder_read(lv_indev_t *drv, lv_indev_data_t *data)
@@ -203,6 +182,19 @@ static void set_temp(void * bar, int32_t temp)
     lv_bar_set_value(bar, temp, LV_ANIM_ON);
 }
 
+// Function to animate the slider value
+void animate_slider(lv_obj_t *slider, int32_t new_value) {
+    lv_anim_t a;
+    lv_anim_init(&a); // Initialize the animation structure
+    lv_anim_set_var(&a, slider); // Set the target object
+    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_slider_set_value); // Set the function to apply the animation
+    lv_anim_set_values(&a, lv_slider_get_value(slider), new_value); // Set the start and end values
+    lv_anim_set_time(&a, 1000); // Set the duration of the animation (in milliseconds)
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out); // Set the easing function for smooth transitions
+    lv_anim_start(&a); // Start the animation
+}
+
+
 static void processCommand(const char* input, uint16_t length) {
     //First character is the node identifier (U = UI, M = Main Controller, S = Secondary Controller)
     //Second character is the command
@@ -220,23 +212,63 @@ static void processCommand(const char* input, uint16_t length) {
     }
     ESP_LOGI(CMD_TASK_TAG, "Read payload: %s", payload);
 
+    uint8_t targetBrightness = 0;
+    uint8_t targetColor = 0;
+    int fillR, fillG, fillB = 0;
+    int tHours, tMinutes = 0;
     if(input[0] == 'M'){
         switch(input[1]){
             case 'S': //Device status update - Shows if one of the BLE devices is discovered
                 break;
             case 'T': //Time change - gets the time from the main controller and sets it to the UI
                 //Format is "HH:MM"
-                if (sscanf(payload, "%2u%1[^:]%2u", &timeHours, &timeMinutes) == 2) {
+                if (sscanf(payload, "%2d %2d", &tHours, &tMinutes) == 2) {
                     ESP_LOGI(CMD_TASK_TAG, "Got Time Command - %u:%u", timeHours, timeMinutes);
+                    timeHours = tHours;
+                    timeMinutes = tMinutes;
                 } else {
                     ESP_LOGI(CMD_TASK_TAG, "Invalid time format");
                 }
         
                 
                 break;
+            case 'F':    //Bulb fill command. Takes RGB value and sets bulb fill color
+                //Format is "RRGGBB"
+                if (sscanf(payload, "%x %x %x", &fillR, &fillG, &fillB) == 3) {
+                    ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
+                    bulbFillColor.red = fillR;
+                    bulbFillColor.green = fillG;
+                    bulbFillColor.blue = fillB;
+                    lv_style_set_img_recolor(&styleBulbFill, bulbFillColor);             // Set the recolor
+                    lv_obj_report_style_change(&styleBulbFill);
+
+                } else {
+                    ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
+                }
+                break;
+            case 'O':    //Bulb outline command. Takes RGB value and sets bulb fill color
+                //Format is "RRGGBB"
+                if (sscanf(payload, "%x %x %x", &fillR, &fillG, &fillB) == 3) {
+                    ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
+                    bulbOutlineColor.red = fillR;
+                    bulbOutlineColor.green = fillG;
+                    bulbOutlineColor.blue = fillB;
+                    lv_style_set_img_recolor(&styleBulbOutline, bulbOutlineColor);             // Set the recolor
+                    lv_obj_report_style_change(&styleBulbOutline);
+
+                } else {
+                    ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
+                }
+                break;
             case 'B': //Brightness change - gets the brightness from the main controller and sets it to the UI
+                targetBrightness = atoi(payload);
+                if(targetBrightness > 100) targetBrightness = 100;
+                animate_slider(brightnessSlider, targetBrightness);
                 break;
             case 'C': //Color temperature change - gets the color from the main controller and sets it to the UI
+                targetColor = atoi(payload);
+                if(targetColor < 24) targetColor = 24;
+                animate_slider(colorSlider, targetColor);
                 break;
             case 'N': //Network status - information about the network status of the main controller
                 break;
@@ -286,8 +318,6 @@ void draw_UI_Main(){
     static lv_style_t style_indicator;
 
     static lv_style_t style_bg_temperature;
-    static lv_color_t temperature_warm = { .red = 0xFF, .green = 0x96, .blue = 0x3C };  //2400K
-    static lv_color_t temperature_cool = { .red = 0xF2, .green = 0xF2, .blue = 0xFF };  //7000K
 
     static lv_style_t style_bg_brightness;
     static lv_color_t brightness_dark = { .red = 0x1C, .green = 0x1C, .blue = 0x1C };  //dark
@@ -300,8 +330,8 @@ void draw_UI_Main(){
 
     lv_style_init(&style_bg_temperature);
     lv_style_set_bg_opa(&style_bg_temperature, LV_OPA_COVER);
-    lv_style_set_bg_color(&style_bg_temperature, temperature_warm);
-    lv_style_set_bg_grad_color(&style_bg_temperature, temperature_cool);
+    lv_style_set_bg_color(&style_bg_temperature, color_warm);
+    lv_style_set_bg_grad_color(&style_bg_temperature, color_cool);
     lv_style_set_bg_grad_dir(&style_bg_temperature, LV_GRAD_DIR_HOR);
     lv_style_set_border_color(&style_bg_temperature, lv_color_hex(0xFFFFFF));
     
@@ -362,7 +392,13 @@ void draw_UI_Main(){
     lv_obj_add_event_cb(roller1, NULL, LV_EVENT_ALL, NULL);
     lv_obj_align(roller1, LV_ALIGN_CENTER, 150, 0);*/
 
-    
+    lv_style_init(&styleBulbOutline);
+    lv_style_set_img_recolor(&styleBulbOutline, lv_color_hex(0xFFFFFF));             // Set the recolor
+    lv_style_set_img_recolor_opa(&styleBulbOutline, LV_OPA_COVER);  // Set opacity to full recolor
+
+    lv_style_init(&styleBulbFill);
+    lv_style_set_img_recolor(&styleBulbFill, color_warm);             // Set the recolor
+    lv_style_set_img_recolor_opa(&styleBulbFill, LV_OPA_COVER);  // Set opacity to full recolor
 
     
     watchImage = lv_image_create(lv_screen_active());
@@ -370,8 +406,20 @@ void draw_UI_Main(){
     lv_image_set_src(watchImage, &WatchAway);
 
     phoneImage = lv_image_create(lv_screen_active());
-    lv_obj_align(phoneImage, LV_ALIGN_CENTER, -25, 0);
+    lv_obj_align(phoneImage, LV_ALIGN_CENTER, 125, 0);
     lv_image_set_src(phoneImage, &iPhoneAway);
+
+
+    bulbFill = lv_image_create(lv_screen_active());
+    lv_obj_add_style(bulbFill, &styleBulbFill, LV_PART_MAIN);
+    lv_obj_align(bulbFill, LV_ALIGN_CENTER, 0, 0);
+    lv_image_set_src(bulbFill, &bulbfill);
+
+
+    bulbOutline = lv_image_create(lv_screen_active());
+    lv_obj_add_style(bulbOutline, &styleBulbOutline, LV_PART_MAIN);
+    lv_obj_align(bulbOutline, LV_ALIGN_CENTER, 0, 0);
+    lv_image_set_src(bulbOutline, &bulbicon);
 
     
     text_label_date = lv_label_create(lv_screen_active());
