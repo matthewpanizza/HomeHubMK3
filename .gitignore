@@ -1,2 +1,5 @@
 build
 /HomeHubMK3_Frontend/.vscode
+/HomeHubMK3_Backend/target
+/HomeHubMK3_Backend/.dist
+/HomeHubMK3_Backend/.vscode

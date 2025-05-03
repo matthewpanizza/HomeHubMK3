@@ -14,6 +14,7 @@
 #include "mt8901.h"
 #include "bitmaps.h"
 #include "math.h"
+#include "driver/ledc.h"
 //#include "weather_images.h"
 
 #define TAG "MAIN"
@@ -22,6 +23,7 @@
 
 #define BUF_SIZE (1024)
 #define RX_BUF_SIZE (BUF_SIZE)
+#define MAX_RX_COMMANDS (10)
 
 static void increase_lvgl_tick(void* arg) {
     lv_tick_inc(portTICK_PERIOD_MS);
@@ -113,23 +115,71 @@ void __qsmd_encoder_init(void)
 
 }
 
+void configure_backlight_PWM(uint32_t frequency, uint8_t duty_cycle_percent) {
+    // Configure the LEDC timer
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_LOW_SPEED_MODE,  // High-speed mode
+        .timer_num        = LEDC_TIMER_0,         // Timer 0
+        .duty_resolution  = LEDC_TIMER_8_BIT,     // 8-bit resolution
+        .freq_hz          = frequency,            // Frequency in Hz
+        .clk_cfg          = LEDC_AUTO_CLK         // Auto select clock source
+    };
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+    // Configure the LEDC channel
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num       = 38,                     // GPIO pin 38
+        .speed_mode     = LEDC_LOW_SPEED_MODE,   // High-speed mode
+        .channel        = LEDC_CHANNEL_0,        // Channel 0
+        .timer_sel      = LEDC_TIMER_0,          // Use Timer 0
+        .duty           = 0,                     // Initial duty cycle (0%)
+        .hpoint         = 0                      // High point
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+
+    // Set the duty cycle
+    uint32_t duty = (duty_cycle_percent * ((1 << LEDC_TIMER_8_BIT) - 1)) / 100;
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+}
+
 static void rx_task(void *arg)
 {
-    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    char rxData[RX_BUF_SIZE+1];
+    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE + 1);
+    static char* commandArray[MAX_RX_COMMANDS]; // Array to hold up to 10 commands
+    static int commandCount = 0;   // Number of commands in the array
+    static char buffer[RX_BUF_SIZE + 1];
+    static int buffer_len = 0;
+
     while (1) {
         const int rxBytes = uart_read_bytes(UART_NUM_2, data, RX_BUF_SIZE, 100 / portTICK_PERIOD_MS);
         if (rxBytes > 0) {
-            for(int i = 0; i < rxBytes; i++) {
+            for (int i = 0; i < rxBytes; i++) {
                 if (data[i] == '\n') {
-                    data[i] = '\0';
-                    //for(int j = 0; j <= i; j++) {
-                    //    rxData[j] = data[j];
-                    //}
-                    break;
+                    buffer[buffer_len] = '\0'; // Null-terminate the string
+
+                    // Store the command in the array
+                    if (commandCount < MAX_RX_COMMANDS) {
+                        commandArray[commandCount] = strdup(buffer); // Duplicate the buffer
+                        commandCount++;
+                    }
+
+                    buffer_len = 0; // Reset the buffer length for the next command
+                } else {
+                    if (buffer_len < RX_BUF_SIZE) {
+                        buffer[buffer_len++] = data[i]; // Append character to buffer
+                    }
                 }
             }
-            processCommand((const char*) data, rxBytes);
+
+            // If all strings have been received (e.g., based on a condition or timeout)
+            if (commandCount > 0) {
+                for (int j = 0; j < commandCount; j++) {
+                    processCommand(commandArray[j], strlen(commandArray[j]));
+                    free(commandArray[j]); // Free the allocated memory
+                }
+                commandCount = 0; // Reset the command count
+            }
         }
     }
     free(data);
@@ -140,7 +190,7 @@ static void brightness_changed_cb(lv_event_t *e) {
     uint32_t sliderValue = lv_slider_get_value(slider);
 
     char output[10];
-    lv_snprintf(output, sizeof(output), "B%d\n", sliderValue);
+    lv_snprintf(output, sizeof(output), "UB%d\n", sliderValue);
     uart_write_bytes(UART_NUM_2, (const char*)output, strlen(output));
 }
 
@@ -149,7 +199,7 @@ static void color_changed_cb(lv_event_t *e) {
     uint32_t sliderValue = lv_slider_get_value(slider);
 
     char output[10];
-    lv_snprintf(output, sizeof(output), "C%d\n", sliderValue);
+    lv_snprintf(output, sizeof(output), "UC%d\n", sliderValue);
     uart_write_bytes(UART_NUM_2, (const char*)output, strlen(output));
 }
 
@@ -202,15 +252,15 @@ static void processCommand(const char* input, uint16_t length) {
 
     if(length < 0) return; //Invalid length
 
-    static const char *CMD_TASK_TAG = "CMD_TASK";
-    esp_log_level_set(CMD_TASK_TAG, ESP_LOG_INFO);
-    ESP_LOGI(CMD_TASK_TAG, "Read bytes: %s", input);
+    //static const char *CMD_TASK_TAG = "CMD_TASK";
+    //esp_log_level_set(CMD_TASK_TAG, ESP_LOG_INFO);
+    //ESP_LOGI(CMD_TASK_TAG, "Read bytes: %s", input);
 
     char payload[length];
     for(int i = 2; i < length; i++){
         payload[i-2] = input[i];
     }
-    ESP_LOGI(CMD_TASK_TAG, "Read payload: %s", payload);
+    //ESP_LOGI(CMD_TASK_TAG, "Read payload: %s", payload);
 
     uint8_t targetBrightness = 0;
     uint8_t targetColor = 0;
@@ -223,11 +273,11 @@ static void processCommand(const char* input, uint16_t length) {
             case 'T': //Time change - gets the time from the main controller and sets it to the UI
                 //Format is "HH:MM"
                 if (sscanf(payload, "%2d %2d", &tHours, &tMinutes) == 2) {
-                    ESP_LOGI(CMD_TASK_TAG, "Got Time Command - %u:%u", timeHours, timeMinutes);
+                    //ESP_LOGI(CMD_TASK_TAG, "Got Time Command - %u:%u", timeHours, timeMinutes);
                     timeHours = tHours;
                     timeMinutes = tMinutes;
                 } else {
-                    ESP_LOGI(CMD_TASK_TAG, "Invalid time format");
+                    //ESP_LOGI(CMD_TASK_TAG, "Invalid time format");
                 }
         
                 
@@ -235,7 +285,7 @@ static void processCommand(const char* input, uint16_t length) {
             case 'F':    //Bulb fill command. Takes RGB value and sets bulb fill color
                 //Format is "RRGGBB"
                 if (sscanf(payload, "%x %x %x", &fillR, &fillG, &fillB) == 3) {
-                    ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
+                    //ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
                     bulbFillColor.red = fillR;
                     bulbFillColor.green = fillG;
                     bulbFillColor.blue = fillB;
@@ -243,13 +293,13 @@ static void processCommand(const char* input, uint16_t length) {
                     lv_obj_report_style_change(&styleBulbFill);
 
                 } else {
-                    ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
+                    //ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
                 }
                 break;
             case 'O':    //Bulb outline command. Takes RGB value and sets bulb fill color
                 //Format is "RRGGBB"
                 if (sscanf(payload, "%x %x %x", &fillR, &fillG, &fillB) == 3) {
-                    ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
+                    //ESP_LOGI(CMD_TASK_TAG, "Got Bulb Fill Command - %02X:%02X:%02X", fillR, fillG, fillB);
                     bulbOutlineColor.red = fillR;
                     bulbOutlineColor.green = fillG;
                     bulbOutlineColor.blue = fillB;
@@ -257,7 +307,7 @@ static void processCommand(const char* input, uint16_t length) {
                     lv_obj_report_style_change(&styleBulbOutline);
 
                 } else {
-                    ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
+                    //ESP_LOGI(CMD_TASK_TAG, "Invalid RGB format");
                 }
                 break;
             case 'B': //Brightness change - gets the brightness from the main controller and sets it to the UI
@@ -275,23 +325,23 @@ static void processCommand(const char* input, uint16_t length) {
             case 'W': //Watch status - information about the watch status (present or away)
                 if(payload[0] == '1'){
                     watchPresent = true;
-                    ESP_LOGI(CMD_TASK_TAG, "Watch Present");
+                    //ESP_LOGI(CMD_TASK_TAG, "Watch Present");
                 } else if(payload[0] == '0'){
                     watchPresent = false;
-                    ESP_LOGI(CMD_TASK_TAG, "Watch Away");
+                    //ESP_LOGI(CMD_TASK_TAG, "Watch Away");
                 } else {
-                    ESP_LOGI(CMD_TASK_TAG, "Invalid Watch Status Payload: %s", payload);
+                    //ESP_LOGI(CMD_TASK_TAG, "Invalid Watch Status Payload: %s", payload);
                 }
                 break;
             case 'P': //Phone status - information about the phone status (present or away)
                 if(payload[0] == '1'){
                     phonePresent = true;
-                    ESP_LOGI(CMD_TASK_TAG, "Phone Present");
+                    //ESP_LOGI(CMD_TASK_TAG, "Phone Present");
                 } else if(payload[0] == '0'){
                     phonePresent = false;
-                    ESP_LOGI(CMD_TASK_TAG, "Phone Away");
+                    //ESP_LOGI(CMD_TASK_TAG, "Phone Away");
                 } else {
-                    ESP_LOGI(CMD_TASK_TAG, "Invalid Phone Status Payload: %s", payload);
+                    //ESP_LOGI(CMD_TASK_TAG, "Invalid Phone Status Payload: %s", payload);
                 }
                 break;
             default:
@@ -465,6 +515,8 @@ void update_UI_Main(){
 }
 
 void lvgl_task(void* arg) {
+    //configure_backlight_PWM(1000, 0); // Set the backlight to 100% brightness
+
     screen_init();
 
     __qsmd_encoder_init();
