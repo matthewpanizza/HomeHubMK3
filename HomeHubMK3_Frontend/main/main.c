@@ -143,25 +143,30 @@ void configure_backlight_PWM(uint32_t frequency, uint8_t duty_cycle_percent) {
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
 }
 
+// Define the queue handle
+static QueueHandle_t commandQueue;
+
+// Update the rx_task function
 static void rx_task(void *arg)
 {
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE + 1);
-    static char* commandArray[MAX_RX_COMMANDS]; // Array to hold up to 10 commands
-    static int commandCount = 0;   // Number of commands in the array
     static char buffer[RX_BUF_SIZE + 1];
     static int buffer_len = 0;
 
     while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_2, data, RX_BUF_SIZE, 100 / portTICK_PERIOD_MS);
+        const int rxBytes = uart_read_bytes(UART_NUM_2, data, RX_BUF_SIZE, 1 / portTICK_PERIOD_MS);
         if (rxBytes > 0) {
             for (int i = 0; i < rxBytes; i++) {
                 if (data[i] == '\n') {
                     buffer[buffer_len] = '\0'; // Null-terminate the string
 
-                    // Store the command in the array
-                    if (commandCount < MAX_RX_COMMANDS) {
-                        commandArray[commandCount] = strdup(buffer); // Duplicate the buffer
-                        commandCount++;
+                    // Push the command into the queue
+                    char* command = strdup(buffer); // Allocate memory for the command
+                    if (command != NULL) {
+                        if (xQueueSend(commandQueue, &command, portMAX_DELAY) != pdPASS) {
+                            free(command); // Free memory if the queue is full
+                            ESP_LOGE("RX TASK", "Failed to enqueue command");
+                        }
                     }
 
                     buffer_len = 0; // Reset the buffer length for the next command
@@ -171,18 +176,17 @@ static void rx_task(void *arg)
                     }
                 }
             }
-
-            // If all strings have been received (e.g., based on a condition or timeout)
-            if (commandCount > 0) {
-                for (int j = 0; j < commandCount; j++) {
-                    processCommand(commandArray[j], strlen(commandArray[j]));
-                    free(commandArray[j]); // Free the allocated memory
-                }
-                commandCount = 0; // Reset the command count
-            }
         }
     }
     free(data);
+}
+
+static void check_command_queue(){
+    char* command;
+    if (xQueueReceive(commandQueue, &command, 0) == pdPASS) {
+        processCommand(command, strlen(command));
+        free(command); // Free the allocated memory after processing
+    }
 }
 
 static void brightness_changed_cb(lv_event_t *e) {
@@ -252,9 +256,9 @@ static void processCommand(const char* input, uint16_t length) {
 
     if(length < 0) return; //Invalid length
 
-    //static const char *CMD_TASK_TAG = "CMD_TASK";
-    //esp_log_level_set(CMD_TASK_TAG, ESP_LOG_INFO);
-    //ESP_LOGI(CMD_TASK_TAG, "Read bytes: %s", input);
+    static const char *CMD_TASK_TAG = "CMD_TASK";
+    esp_log_level_set(CMD_TASK_TAG, ESP_LOG_INFO);
+    ESP_LOGI(CMD_TASK_TAG, "Read bytes: %s", input);
 
     char payload[length];
     for(int i = 2; i < length; i++){
@@ -535,6 +539,7 @@ void lvgl_task(void* arg) {
     for (;;) {
         update_UI_Main();
         lv_task_handler();
+        check_command_queue();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -572,8 +577,12 @@ void app_main(void) {
     //static uint32_t user_data = 10;
     //timer = lv_timer_create(uart_print, 500, &user_data);
 
+    // Create the command queue
+    commandQueue = xQueueCreate(10, sizeof(char*));
+
     xTaskCreatePinnedToCore(lvgl_task, NULL, 8 * 1024, NULL, 5, NULL, 1);
-    xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
+    xTaskCreatePinnedToCore(rx_task, "uart_rx_task", 1024*2, NULL, 4, NULL, 0);
+    //xTaskCreatePinnedToCore(command_processor_task, "cmd_prc_task", 1024*2, NULL, 4, NULL, 0);
 
     
 }
