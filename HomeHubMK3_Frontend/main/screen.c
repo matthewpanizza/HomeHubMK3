@@ -389,14 +389,14 @@ void qmsd_rgb_spi_init() {
 }
 
 void screen_init(void) {
-    gpio_config_t bk_gpio_config = {
+    /*gpio_config_t bk_gpio_config = {
         .mode = GPIO_MODE_OUTPUT,
         .pin_bit_mask = 1ULL << LCD_PIN_BK_LIGHT
     };
     // Initialize the GPIO of backlight
     ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
 
-    ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, LCD_BK_LIGHT_OFF_LEVEL));
+    ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, LCD_BK_LIGHT_OFF_LEVEL));*/
 
     qmsd_rgb_spi_init();
 
@@ -446,5 +446,5 @@ void screen_init(void) {
 
     qmsd_rgb_init(&panel_config);
 
-    ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, LCD_BK_LIGHT_ON_LEVEL));
+    //ESP_ERROR_CHECK(gpio_set_level(LCD_PIN_BK_LIGHT, LCD_BK_LIGHT_ON_LEVEL));
 }

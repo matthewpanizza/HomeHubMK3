@@ -72,6 +72,8 @@ uint8_t timeHours = 0;
 uint8_t timeMinutes = 0;
 bool watchPresent = false;
 bool phonePresent = false;
+uint8_t backlightPercentage = 10;
+uint8_t lastBacklightPercentage = 0;
 
 static lv_color_t darken(const lv_color_filter_dsc_t * dsc, lv_color_t color, lv_opa_t opa)
 {
@@ -118,7 +120,7 @@ void __qsmd_encoder_init(void)
 void configure_backlight_PWM(uint32_t frequency, uint8_t duty_cycle_percent) {
     // Configure the LEDC timer
     ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_LOW_SPEED_MODE,  // High-speed mode
+        .speed_mode       = LEDC_LOW_SPEED_MODE,  // Low-speed mode
         .timer_num        = LEDC_TIMER_0,         // Timer 0
         .duty_resolution  = LEDC_TIMER_8_BIT,     // 8-bit resolution
         .freq_hz          = frequency,            // Frequency in Hz
@@ -129,15 +131,22 @@ void configure_backlight_PWM(uint32_t frequency, uint8_t duty_cycle_percent) {
     // Configure the LEDC channel
     ledc_channel_config_t ledc_channel = {
         .gpio_num       = 38,                     // GPIO pin 38
-        .speed_mode     = LEDC_LOW_SPEED_MODE,   // High-speed mode
-        .channel        = LEDC_CHANNEL_0,        // Channel 0
-        .timer_sel      = LEDC_TIMER_0,          // Use Timer 0
-        .duty           = 0,                     // Initial duty cycle (0%)
-        .hpoint         = 0                      // High point
+        .speed_mode     = LEDC_LOW_SPEED_MODE,    // Low-speed mode
+        .channel        = LEDC_CHANNEL_0,         // Channel 0
+        .timer_sel      = LEDC_TIMER_0,           // Use Timer 0
+        .duty           = 0,                      // Initial duty cycle (0%)
+        .hpoint         = 0                       // High point
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
 
-    // Set the duty cycle
+    // Set the initial duty cycle
+    uint32_t duty = (duty_cycle_percent * ((1 << LEDC_TIMER_8_BIT) - 1)) / 100;
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
+}
+
+void update_backlight_PWM(uint8_t duty_cycle_percent) {
+    // Update the duty cycle
     uint32_t duty = (duty_cycle_percent * ((1 << LEDC_TIMER_8_BIT) - 1)) / 100;
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0));
@@ -325,6 +334,11 @@ static void processCommand(const char* input, uint16_t length) {
                 animate_slider(colorSlider, targetColor);
                 break;
             case 'N': //Network status - information about the network status of the main controller
+                break;
+            case 'L':
+                //Backlight change - gets the backlight from the main controller and sets it to the UI
+                backlightPercentage = atoi(payload);
+                if(backlightPercentage > 100) backlightPercentage = 100;
                 break;
             case 'W': //Watch status - information about the watch status (present or away)
                 if(payload[0] == '1'){
@@ -516,6 +530,11 @@ void update_UI_Main(){
             lv_image_set_src(phoneImage, &iPhoneAway);
         }
     }
+
+    if(backlightPercentage != lastBacklightPercentage){
+        lastBacklightPercentage = backlightPercentage;
+        update_backlight_PWM(backlightPercentage);
+    }
 }
 
 void lvgl_task(void* arg) {
@@ -582,6 +601,8 @@ void app_main(void) {
 
     xTaskCreatePinnedToCore(lvgl_task, NULL, 8 * 1024, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(rx_task, "uart_rx_task", 1024*2, NULL, 4, NULL, 0);
+
+    configure_backlight_PWM(1000, 10); // Set frequency to 1 kHz and duty cycle to 50%
     //xTaskCreatePinnedToCore(command_processor_task, "cmd_prc_task", 1024*2, NULL, 4, NULL, 0);
 
     

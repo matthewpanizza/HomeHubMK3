@@ -430,6 +430,41 @@ void updateBulbs(){
     }
 }
 
+void updateAmbientBrightness(){
+    const int average_samples = 10; // Number of samples to average
+    const int max_brightness = 2000;
+    static int brightnessReadings[average_samples] = {0}; // Array to store the last 10 readings
+    static int currentIndex = 0;            // Index to track the current position in the array
+    static int sum = 0;                     // Sum of the readings
+    static int average = 0;                 // Average of the readings
+    static int lastBrightness = 0;             // Last calculated average
+
+    // Read the brightness sensor value. 0-4095
+    int currentReading = analogRead(BRTSNS);
+
+    // Update the sum and replace the oldest reading
+    sum -= brightnessReadings[currentIndex];
+    brightnessReadings[currentIndex] = currentReading;
+    sum += currentReading;
+
+    // Update the current index (circular buffer)
+    currentIndex = (currentIndex + 1) % average_samples;
+
+    // Calculate the new average
+    average = sum / average_samples;
+
+    int percentBrightness = map(average, 0, max_brightness, 0, 100);
+    if(percentBrightness >= 100) percentBrightness = 100;
+
+    // Check if the average has changed by more than 3%
+    if (abs(percentBrightness - lastBrightness) >= 3) {
+        // Transmit the new average over Serial1
+        
+        Serial1.printlnf("ML%d", percentBrightness);
+        lastBrightness = percentBrightness; // Update the last average
+    }
+}
+
 void updateUI(){
 
     if(phoneIcon != (System.millis() - discoveredPhone < BT_TIMEOUT_MS)){
@@ -474,9 +509,10 @@ void setup() {
     pinMode(ENC_DET, INPUT);
     pinMode(TFT_BL,OUTPUT);
     pinMode(ENC_BUT,INPUT_PULLDOWN);
+    pinMode(BRTSNS, INPUT);
     digitalWrite(TFT_CS,HIGH);
-    //pinMode(D7, OUTPUT);
-    //digitalWrite(D7, LOW);
+    pinMode(D7, OUTPUT);
+    digitalWrite(D7, LOW);
     attachInterrupt(ENC_CLK, encoderUpdate, CHANGE);
     attachInterrupt(ENC_BUT,clickUpdate,RISING);
     attachInterrupt(CAP_BUT,buttonUpdate,CHANGE);
@@ -594,8 +630,7 @@ void loop() {
     /////////////////////////////////////////////////
     //////////  Update Sensor Variables  ////////////
     /////////////////////////////////////////////////
-    photo = analogRead(BRTSNS);
-    analogWrite(TFT_BL,(photo >> 4)+1);
+    updateAmbientBrightness();
     
     /////////////////////////////////////////////////
     //////////  MAIN MENU DISPLAY UPDATE  ///////////
