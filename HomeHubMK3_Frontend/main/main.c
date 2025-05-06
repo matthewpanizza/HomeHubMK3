@@ -237,6 +237,12 @@ static void btn_event_cb(lv_event_t *e) {
   }*/
 }
 
+static void button_event_cb(lv_event_t *e) {
+    // Send the string "UG" over UART when the button is pressed to indicate a toggle
+    const char *message = "UG\n";
+    uart_write_bytes(UART_NUM_2, message, strlen(message));
+}
+
 /**
  * Create styles from scratch for buttons.
  */
@@ -496,15 +502,31 @@ void draw_UI_Main(){
     lv_obj_set_style_text_font((lv_obj_t*) text_label_date, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color((lv_obj_t*) text_label_date, lv_palette_main(LV_PALETTE_TEAL), 0);
 
-    //lv_anim_t a;
-    //lv_anim_init(&a);
-    //lv_anim_set_exec_cb(&a, set_temp);
-    //lv_anim_set_duration(&a, 3000);
-    //lv_anim_set_playback_duration(&a, 3000);
-    //lv_anim_set_var(&a, bar);
-    //lv_anim_set_values(&a, -20, 40);
-    //lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    //lv_anim_start(&a);
+    // Create a style for the button
+    static lv_style_t style_button;
+    lv_style_init(&style_button);
+    lv_style_set_bg_color(&style_button, lv_color_hex(0x808080)); // Set background color to gray
+    lv_style_set_bg_opa(&style_button, LV_OPA_COVER);             // Set full opacity
+    lv_style_set_border_color(&style_button, lv_color_hex(0x000000)); // Set border color to black
+    lv_style_set_border_width(&style_button, 2);                  // Set border width
+    lv_style_set_radius(&style_button, 5);                        // Set corner radius
+
+    // Create a button in the bottom center
+    lv_obj_t *button = lv_btn_create(lv_screen_active());
+    lv_obj_align(button, LV_ALIGN_BOTTOM_MID, 0, -20); // Align to the bottom center with a small offset
+    lv_obj_set_size(button, 140, 40); // Set button size
+
+    // Apply the style to the button
+    lv_obj_add_style(button, &style_button, LV_PART_MAIN);
+
+    // Add a label to the button
+    lv_obj_t *label = lv_label_create(button);
+    lv_label_set_text(label, "Toggle Lights");
+    lv_obj_center(label); // Center the label on the button
+
+    // Add an event callback to the button
+    lv_obj_add_event_cb(button, button_event_cb, LV_EVENT_CLICKED, NULL);
+
 }
 
 void update_UI_Main(){

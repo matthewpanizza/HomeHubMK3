@@ -400,6 +400,12 @@ static void processCommand(const char* input, uint16_t length) {
                 updatedColorFromUI = true;  //Set this here so the controller doesn't immediately echo back to the UI
                 update = true;
                 break;
+            case 'G':   //Toggle command. Toggles light status
+                AutoCTL = false;
+                update = true;
+                AutoCTL = false;
+                lightStatus = !lightStatus;
+                break;
             default:
                 break;
         }
@@ -412,7 +418,9 @@ void updateBulbs(){
         for(i=((1.0-dimPCT)*64.0);i<64;i++){
             TPLinkDeviceController.updateBulbColor(1,100-i*1.5625,curColorTemperature*100);
             TPLinkDeviceController.setBulbs();
-            
+            currentColor.convert_NB(curColorTemperature * 100, 100-i*1.5625);
+            if(!updatedColorFromUI) Serial1.printlnf("MB%d", (int)(dimPCT*100));
+            Serial1.printlnf("MF%x %x %x", currentColor.red, currentColor.green, currentColor.blue);
             //delay(20);
         }
         TPLinkDeviceController.updateBulbColor(0,0,curColorTemperature*100);
@@ -422,11 +430,15 @@ void updateBulbs(){
         //fillStrip(true, 64, currentColor.red,currentColor.green,currentColor.blue, 0, dimPCT);
         TPLinkDeviceController.updateBulbColor(1,(int)(dimPCT*100),curColorTemperature*100);
         TPLinkDeviceController.setBulbs();
+        currentColor.convert_NB(curColorTemperature * 100, dimPCT*100);
+        if(!updatedColorFromUI) Serial1.printlnf("MB%d", (int)(dimPCT*100));
+        Serial1.printlnf("MF%x %x %x", currentColor.red, currentColor.green, currentColor.blue);
         delay(3);
     }
     else{
         TPLinkDeviceController.updateBulbColor(0,0,curColorTemperature*100);
         TPLinkDeviceController.setBulbs();
+        Serial1.printlnf("MF%x %x %x", 0, 0, 0);
     }
 }
 
