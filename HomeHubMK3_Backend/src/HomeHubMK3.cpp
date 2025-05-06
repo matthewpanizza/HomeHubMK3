@@ -29,6 +29,7 @@ static void processCommand(const char* input, uint16_t length);
 void updateBulbs();
 void updateAmbientBrightness();
 void updateUI();
+void sendAllParameters();
 void setup();
 void loop();
 void updateSelectedItems();
@@ -177,6 +178,7 @@ int i;                  //loop vars
 int j;
 
 int photo;              //Variable to hold value of photoresistor sensor
+int percentBrightness;
 bool click;
 int mprev;
 
@@ -185,6 +187,7 @@ uint8_t startFadeHr;
 float curColorTemperature, lastColorTemperature;
 float dimPCT, lastDimPCT;          //Global to hold the dimming percentage from the slider
 bool updatedColorFromUI = false; //Flag to tell if the color temperature was updated from the UI
+bool sendParametersRequest = false; //Flag to tell if the parameters were requested from the UI
 float targetColorTemperature;
 
 //Bluetooth Variables
@@ -443,6 +446,8 @@ static void processCommand(const char* input, uint16_t length) {
                 AutoCTL = false;
                 lightStatus = !lightStatus;
                 break;
+            case 'R':    //Request for all UI parameters
+                sendParametersRequest = true;
             default:
                 break;
         }
@@ -456,7 +461,6 @@ void updateBulbs(){
             TPLinkDeviceController.updateBulbColor(1,100-i*1.5625,curColorTemperature*100);
             TPLinkDeviceController.setBulbs();
             currentColor.convert_NB(curColorTemperature * 100, 100-i*1.5625);
-            if(!updatedColorFromUI) Serial1.printlnf("MB%d", (int)(dimPCT*100));
             Serial1.printlnf("MF%x %x %x", currentColor.red, currentColor.green, currentColor.blue);
             //delay(20);
         }
@@ -468,7 +472,6 @@ void updateBulbs(){
         TPLinkDeviceController.updateBulbColor(1,(int)(dimPCT*100),curColorTemperature*100);
         TPLinkDeviceController.setBulbs();
         currentColor.convert_NB(curColorTemperature * 100, dimPCT*100);
-        if(!updatedColorFromUI) Serial1.printlnf("MB%d", (int)(dimPCT*100));
         Serial1.printlnf("MF%x %x %x", currentColor.red, currentColor.green, currentColor.blue);
         delay(3);
     }
@@ -502,7 +505,7 @@ void updateAmbientBrightness(){
     // Calculate the new average
     average = sum / average_samples;
 
-    int percentBrightness = map(average, 0, max_brightness, 0, 100);
+    percentBrightness = map(average, 0, max_brightness, 0, 100);
     if(percentBrightness >= 100) percentBrightness = 100;
 
     // Check if the average has changed by more than 3%
@@ -531,6 +534,22 @@ void updateUI(){
         Serial1.printlnf("MT%d %d", Time.hourFormat12(), Time.minute());
     }
 
+}
+
+void sendAllParameters(){
+    if(sendParametersRequest){
+        Serial1.printlnf("MP%d", phoneIcon ? 1 : 0);
+        Serial1.printlnf("MW%d", watchIcon ? 1 : 0);
+        Serial1.printlnf("ML%d", percentBrightness);
+        Serial1.printlnf("MB%d", (int)(dimPCT*100));
+        Serial1.printlnf("MC%d", curColorTemperature);
+        Serial1.printlnf("MT%d %d", Time.hourFormat12(), Time.minute());
+
+        currentColor.convert_NB(curColorTemperature * 100, dimPCT * 100);
+        Serial1.printlnf("MF%x %x %x", currentColor.red, currentColor.green, currentColor.blue);
+        sendParametersRequest = false;
+    }
+    
 }
 
 void setup() {
@@ -680,6 +699,7 @@ void loop() {
     //////////  Update Sensor Variables  ////////////
     /////////////////////////////////////////////////
     updateAmbientBrightness();
+    sendAllParameters();
     
     /////////////////////////////////////////////////
     //////////  MAIN MENU DISPLAY UPDATE  ///////////

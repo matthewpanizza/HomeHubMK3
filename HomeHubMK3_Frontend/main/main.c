@@ -625,6 +625,8 @@ void app_main(void) {
     xTaskCreatePinnedToCore(rx_task, "uart_rx_task", 1024*2, NULL, 4, NULL, 0);
 
     configure_backlight_PWM(1000, 10); // Set frequency to 1 kHz and duty cycle to 50%
+
+    uart_write_bytes(UART_NUM_2, "UR\n", 3);    //Send a command to request the status of all UI parameters
     //xTaskCreatePinnedToCore(command_processor_task, "cmd_prc_task", 1024*2, NULL, 4, NULL, 0);
 
     
