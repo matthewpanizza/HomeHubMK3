@@ -77,7 +77,7 @@ void updateEEPROM();
     #define CLICK_DIS_SCAN      2000
     #define BT_BOUND            -65     // dBi of received signal to turn on lights
     #define BT_TIMEOUT_MS       180000  // Number of seconds before turning lights off
-    #define BT_AUTO_RE_EN_MS    900000  // Number of milliseconds before re-enabling scanner after manual shutoff
+    #define BT_AUTO_RE_EN_MS    1800000 // Number of milliseconds before re-enabling scanner after manual shutoff
     #define BT_BRT_AUTO_ON      100     // Minimum photoresistor value for automatic turn on of lights  
     #define SCAN_RESULT_COUNT   16      // Max number of devices to discover per scan
     #define CUSTOM_DATA_LEN     31      // Number of bytes to include in the advertising packet for BLE
@@ -415,6 +415,7 @@ static void processCommand(const char* input, uint16_t length) {
                 if(targetBrightness > 100) targetBrightness = 100;  // Ensure values are within range
                 currentBulbBrightness = targetBrightness / 100.0;   // Convert to 0.0 - 1.0 value
                 updatedColorFromUI = true;                          // Set this here so the controller doesn't immediately echo back to the UI
+                eepromUpdate.start();                               // We've made a change to the brightness, save it in the EEPROM
                 //Log.info("Received brightness command: %s. New brightness: %0.2f", payload, currentBulbBrightness);
                 break;
             case 'C':   // Color temperature command. Updated by the slider on the UI
@@ -423,6 +424,7 @@ static void processCommand(const char* input, uint16_t length) {
                 if(targetColor > 70) targetColor = 70;
                 currentColorTemperature = targetColor;              // Assign range-mapped value to control variable
                 updatedColorFromUI = true;                          //Set this here so the controller doesn't immediately echo back to the UI
+                eepromUpdate.start();                               // We've made a change to the color temperature, save it in the EEPROM
                 //Log.info("Received color temperature command: %s. New brightness: %0.2f", payload, currentColorTemperature);
                 break;
             case 'G':   // Toggle command. Toggles light status
@@ -618,8 +620,8 @@ void setup() {
 
     //Log.info("Overriding EEPROM registries");
     //EEPROM.write(EEP_MODE_REG,(uint8_t)1);
-    EEPROM.write(EEP_BRT_REG,(uint8_t)100);
-    EEPROM.write(EEP_COL_REG,(uint8_t)25);
+    //EEPROM.write(EEP_BRT_REG,(uint8_t)100);
+    //EEPROM.write(EEP_COL_REG,(uint8_t)28);
 
     //for(int k = 0; k < (BT_MAXDEVICES>>1); k++) EEPROM.write(k,0);
     //EEPROM.write(EEP_DEVCOUNT_REG,2);
@@ -721,7 +723,7 @@ void loop() {
     checkForSerialCommands();
     
     // If the lights are off, and automatic light control is enabled, check if a bluetooth device has been recently discovered. Only turn on lights if room brightness is dark.
-    if(smartBulbState == false && autoControlLights){      
+    if(!smartBulbState && autoControlLights){      
         if(System.millis()-lastBLEDetectionTime < BT_TIMEOUT_MS && analogRead(BRTSNS) < BT_BRT_AUTO_ON){   //Check that the brightness sensor is dark so doesn't turn on during the day
             //Log.info("A device has been detected. Automatically turning on smart bulbs.");
             autoColorRamping = true;
